@@ -1,2 +1,2 @@
-avr-game-cube-master
+avr-game-cube-secondary
 ====================
