@@ -27,7 +27,9 @@
  #define F_CPU 8000000UL  // 8 MHz
 //#include <util/delay.h>
 
-#define UINT16_MAX 65535
+#define SHUTDOWN_TIMEOUT 1500
+#define ADC_TIMEOUT 200
+#define ADC_STARTUP 10
 
 #include <avr/io.h>
 #include <avr/interrupt.h>
@@ -41,11 +43,11 @@
 #include "io.h"
 
 volatile uint8_t flags = 0;
-#define MS_FLAG 0
-#define VOLTAGE_WARNING 1
-#define VOLTAGE_CUTOFF 2
+#define VOLTAGE_WARNING 0
+#define VOLTAGE_CUTOFF 1
 
 volatile uint8_t ir_count = 0;
+volatile uint16_t ms_count = 0;
 
 int main() {
 	// INIT
@@ -54,7 +56,7 @@ int main() {
 	SETBIT(PORTA, PA3);
 	SETBIT(PORTA, PA1);
 	
-	// timer 1 for 1 ms interrupts and pwm for one led
+	// timer 1 for 76khz interrupt and pwm for one led
 	TCCR1A = 0b01000000;
 	TCCR1B = 0b00001001; // CTC mode 
 	OCR1A = 105; // clear
@@ -79,15 +81,16 @@ int main() {
 
 	// led output pin
 	avr_cpp_lib::OutputPin ledOut(&DDRA, &PORTA, PA0);
+	ledOut.set();
 
 	// enable interrupts
 	sei();
 
-	uint16_t button_state = 0;
-	uint8_t pwm_state = 0;
-	uint16_t adc_state = 0;
-	uint16_t led_state = 0;
-	uint16_t shutdown_timeout = UINT16_MAX;
+	uint8_t button_state = 0;
+	uint8_t led_state = 0;
+
+	uint8_t adc_timeout = ADC_STARTUP;
+	uint16_t shutdown_timeout = SHUTDOWN_TIMEOUT;
 	
 	uint8_t ir_state = 0;
 
@@ -175,7 +178,7 @@ int main() {
 			case 12:
 				if (ir_count >= 64) { // wait to make sure signal stops at other end
 					ir_state = 0;
-					shutdown_timeout = UINT16_MAX;
+					shutdown_timeout = SHUTDOWN_TIMEOUT;
 				}
 				break;
 				
@@ -185,60 +188,54 @@ int main() {
 				}
 				break;
 		}
-			
-		if (BITSET(flags, MS_FLAG)) {
-			CLEARBIT(flags, MS_FLAG);
+		
+		// execute every 50ms
+		if (ms_count >= 3810) {
+			ms_count = 0;
 						
-			// shutdown
+			// shutdown after 75s
 			if (shutdown_timeout > 0) {
 				shutdown_timeout--;
 			} else {
 				break;
 			}
 						
-			// adc
-			if (adc_state == 2000) {
-				adc_state = 0;
+			// adc every 10s
+			if (adc_timeout > 0) {
+				adc_timeout--;
+			} else {
+				adc_timeout = ADC_TIMEOUT;
 				SETBIT(ADCSRA, ADSC);
-			} else {
-				adc_state++;
 			}
 			
-			// voltage cutoff
-			if (BITSET(flags, VOLTAGE_CUTOFF)) {
-				break;
-			}
-			
-			// pwm of leds
-			if (pwm_state < 3) {
-				if (pwm_state == 0) {					
-					if (BITSET(flags, VOLTAGE_WARNING)) {
-						led_state++;
-						if (led_state > 300) {
-							ledOut.set();
-							if (led_state > 400) {
-								led_state = 0;
-							}
-						}
-					} else {
-						ledOut.set();
-					}
-				} else if (pwm_state == 1) {
-					ledOut.clear();
+			// if anything in flags
+			if (flags > 0) {
+				// voltage cutoff
+				if (BITSET(flags, VOLTAGE_CUTOFF)) {
+					break;
 				}
-				pwm_state++;
-			} else {
-				pwm_state = 0;
+				
+				// blinking led
+				if (BITSET(flags, VOLTAGE_WARNING)) {
+					led_state++;
+					if (led_state == 6) {
+						ledOut.set();
+						if (led_state == 8) {
+							ledOut.clear();
+							led_state = 0;
+						}
+					}
+				}
 			}
 			
 			// button
 			if (BITSET(PINA, PA1)) {
 				button_state = 0;
 			} else {
-				shutdown_timeout = UINT16_MAX;
+				shutdown_timeout = SHUTDOWN_TIMEOUT;
 			
 				// shutdown if pressed for 1s				
-				if (button_state >= 1000) {
+				if (button_state >= 20) {
 					break;
 				}
 
@@ -258,13 +255,7 @@ int main() {
 
 ISR(TIM1_COMPA_vect) {
 	ir_count++;
-	static uint8_t c = 75;
-	if (c > 0) {
-		c--;
-	} else {
-		c = 75;
-		SETBIT(flags, MS_FLAG);
-	}
+	ms_count++;
 }
 
 ISR(ADC_vect) {
@@ -273,8 +264,8 @@ ISR(ADC_vect) {
 
 	accumulator += ADC;
 	count++;
-	if (count > 59) {
-		accumulator /= 60;
+	if (count > 32) {
+		accumulator >>= 5;
 		
 		if (accumulator < 900) {
 			SETBIT(flags, VOLTAGE_WARNING);
