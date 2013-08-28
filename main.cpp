@@ -30,6 +30,7 @@
 #define SHUTDOWN_TIMEOUT 1500
 #define ADC_TIMEOUT 200
 #define ADC_STARTUP 10
+#define ADC_TIMES 16
 
 #include <avr/io.h>
 #include <avr/interrupt.h>
@@ -264,12 +265,10 @@ ISR(ADC_vect) {
 
 	accumulator += ADC;
 	count++;
-	if (count > 32) {
-		accumulator >>= 5;
-		
-		if (accumulator < 900) {
+	if (count > ADC_TIMES) {
+		if (accumulator < 900*ADC_TIMES) {
 			SETBIT(flags, VOLTAGE_WARNING);
-			if (accumulator < 850) {
+			if (accumulator < 850*ADC_TIMES) {
 				SETBIT(flags, VOLTAGE_CUTOFF);
 			}
 		}
