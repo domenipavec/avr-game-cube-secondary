@@ -31,7 +31,6 @@
 #define SHUTDOWN_TIMEOUT 1500
 #define ADC_TIMEOUT 200
 #define ADC_STARTUP 10
-#define ADC_TIMES 60
 // cal box 0: 1.015
 // cal box 1: 1
 #define ADC_CALIBRATION 1
@@ -263,22 +262,11 @@ ISR(TIM1_COMPA_vect) {
 }
 
 ISR(ADC_vect) {
-	static uint8_t count = 0;
-	static uint16_t accumulator = 0;
-
-	accumulator += ADC;
-	count++;
-	if (count > (ADC_TIMES - 1)) {
-		if (accumulator < (uint16_t)(900u*ADC_TIMES*ADC_CALIBRATION)) {
-			SETBIT(flags, VOLTAGE_WARNING);
-			if (accumulator < (uint16_t)(850u*ADC_TIMES*ADC_CALIBRATION)) {
-				SETBIT(flags, VOLTAGE_CUTOFF);
-			}
+	uint16_t tmp = ADC;
+	if (tmp < (uint16_t)(900u*ADC_CALIBRATION)) {
+		SETBIT(flags, VOLTAGE_WARNING);
+		if (tmp < (uint16_t)(850u*ADC_CALIBRATION)) {
+			SETBIT(flags, VOLTAGE_CUTOFF);
 		}
-		
-		count = 0;
-		accumulator = 0;
-	} else {
-		SETBIT(ADCSRA, ADSC);
 	}
 }
