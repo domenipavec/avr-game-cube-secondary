@@ -30,7 +30,10 @@
 #define SHUTDOWN_TIMEOUT 1500
 #define ADC_TIMEOUT 200
 #define ADC_STARTUP 10
-#define ADC_TIMES 16
+#define ADC_TIMES 60
+// cal box 0: 1.015
+// cal box 1: 1
+#define ADC_CALIBRATION 1
 
 #include <avr/io.h>
 #include <avr/interrupt.h>
@@ -219,12 +222,11 @@ int main() {
 				// blinking led
 				if (BITSET(flags, VOLTAGE_WARNING)) {
 					led_state++;
-					if (led_state == 6) {
+					if (led_state == 16) {
 						ledOut.set();
-						if (led_state == 8) {
-							ledOut.clear();
-							led_state = 0;
-						}
+					} else if (led_state == 18) {
+						ledOut.clear();
+						led_state = 0;
 					}
 				}
 			}
@@ -265,10 +267,10 @@ ISR(ADC_vect) {
 
 	accumulator += ADC;
 	count++;
-	if (count > ADC_TIMES) {
-		if (accumulator < 900*ADC_TIMES) {
+	if (count > (ADC_TIMES - 1)) {
+		if (accumulator < (uint16_t)(900u*ADC_TIMES*ADC_CALIBRATION)) {
 			SETBIT(flags, VOLTAGE_WARNING);
-			if (accumulator < 850*ADC_TIMES) {
+			if (accumulator < (uint16_t)(850u*ADC_TIMES*ADC_CALIBRATION)) {
 				SETBIT(flags, VOLTAGE_CUTOFF);
 			}
 		}
