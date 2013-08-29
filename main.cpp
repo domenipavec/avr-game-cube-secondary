@@ -27,6 +27,7 @@
  #define F_CPU 8000000UL  // 8 MHz
 //#include <util/delay.h>
 
+// times are multiplied by 50 ms
 #define SHUTDOWN_TIMEOUT 1500
 #define ADC_TIMEOUT 200
 #define ADC_STARTUP 10
